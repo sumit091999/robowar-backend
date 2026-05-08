@@ -7,7 +7,16 @@ const app = express();
 
 app.use(
   cors({
-    origin: env.clientOrigin,
+    origin(origin, callback) {
+      const normalizedOrigin = origin?.replace(/\/$/, "");
+
+      if (!normalizedOrigin || env.clientOrigins.includes(normalizedOrigin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS origin not allowed: ${origin}`));
+    },
     credentials: true,
   }),
 );

@@ -16,9 +16,27 @@ for (const key of requiredEnv) {
   }
 }
 
+const defaultClientOrigins = [
+  "http://localhost:5173",
+  "https://robowarsgame.xyz",
+  "https://www.robowarsgame.xyz",
+];
+
+function parseClientOrigins(value) {
+  return value
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+}
+
+const clientOrigins = parseClientOrigins(
+  process.env.CLIENT_ORIGINS || process.env.CLIENT_ORIGIN || defaultClientOrigins.join(","),
+);
+
 export const env = {
   port: process.env.PORT || 4000,
-  clientOrigin: process.env.CLIENT_ORIGIN || "http://localhost:5173",
+  clientOrigin: clientOrigins[0],
+  clientOrigins,
   mongodbUri: process.env.MONGODB_URI || "",
   mongodbCollection: process.env.MONGODB_COLLECTION || "RoboWar",
   zeroGChainRpcUrl: process.env.ZERO_G_CHAIN_RPC_URL || "https://evmrpc.0g.ai",

@@ -18,7 +18,7 @@ npm install
 
 ```env
 PORT=4000
-CLIENT_ORIGIN=http://localhost:5173
+CLIENT_ORIGINS=http://localhost:5173,https://robowarsgame.xyz,https://www.robowarsgame.xyz
 MONGODB_URI=your_mongodb_connection_string
 MONGODB_COLLECTION=RoboWar
 ZERO_G_CHAIN_RPC_URL=https://evmrpc.0g.ai
