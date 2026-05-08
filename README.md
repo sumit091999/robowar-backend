@@ -41,6 +41,10 @@ ROBOWAR_INDEX_START_BLOCK=0
 npm run dev
 ```
 
+For DigitalOcean App Platform, leave `PORT` unset or set it to the platform HTTP port
+(`8080` by default). The app reads `process.env.PORT`, so it will use DigitalOcean's injected
+port in production and `4000` only as a local fallback.
+
 The frontend sends authenticated Privy users to:
 
 ```txt
