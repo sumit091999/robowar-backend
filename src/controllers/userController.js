@@ -118,6 +118,8 @@ export async function saveAuthenticatedUser(req, res, next) {
         loginType,
         databaseId: databaseResult.id,
         databaseCollection: databaseResult.collection,
+        databaseLoginCount: databaseResult.loginCount,
+        databaseLastLoginAt: databaseResult.lastLoginAt,
         storageRoot: storageResult.rootHash,
         storageTransactionHash: storageResult.txHash,
         indexTransactionHash: indexResult.transactionHash,

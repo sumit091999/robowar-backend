@@ -40,6 +40,7 @@ function serializeLoginDocument(document) {
     id: document._id.toString(),
     privyUserId: document.privyUserId,
     walletAddress: document.walletAddress,
+    loginCount: document.loginCount ?? 1,
     type: document.type,
     loginType: document.loginType,
     linkedAccounts: document.linkedAccounts,
@@ -50,87 +51,113 @@ function serializeLoginDocument(document) {
     indexBlockTimestamp: document.indexBlockTimestamp,
     indexedAt: document.indexedAt?.toISOString?.() ?? document.indexedAt ?? null,
     indexExplorerUrl: document.indexExplorerUrl,
+    firstLoginAt: document.firstLoginAt?.toISOString?.() ?? document.firstLoginAt ?? null,
+    lastLoginAt: document.lastLoginAt?.toISOString?.() ?? document.lastLoginAt ?? null,
     createdAt: document.createdAt?.toISOString?.() ?? document.createdAt ?? null,
     savedAt: document.savedAt?.toISOString?.() ?? document.savedAt ?? null,
   };
 }
 
-function isLegacyPrivyUniqueIndexError(error) {
-  return (
-    error?.code === 11000 &&
-    (error?.keyPattern?.privyUserId || error?.message?.includes("privyUserId_1"))
-  );
-}
+function getLoginIdentityFilters(userRecord) {
+  const filters = [
+    { privyUserId: userRecord.privyUserId },
+    { knownPrivyUserIds: userRecord.privyUserId },
+    { walletAddressLower: userRecord.walletAddress.toLowerCase() },
+    { knownWalletAddressesLower: userRecord.walletAddress.toLowerCase() },
+  ];
 
-async function dropLegacyPrivyUniqueIndex(collection) {
-  try {
-    await collection.dropIndex("privyUserId_1");
-    console.warn("[mongo] Dropped legacy unique privyUserId_1 index for login history");
-  } catch (error) {
-    if (error?.codeName !== "IndexNotFound") {
-      throw error;
-    }
+  if (userRecord.emailHash) {
+    filters.push({ emailHash: userRecord.emailHash }, { knownEmailHashes: userRecord.emailHash });
   }
+
+  return filters;
 }
 
 export async function saveUserLoginToMongo({ userRecord, storageResult, indexResult }) {
   const client = await getMongoClient();
   const database = client.db();
   let collection = database.collection(env.mongodbCollection);
-
-  const document = {
-    privyUserId: userRecord.privyUserId,
+  const now = new Date();
+  const createdAt = new Date(userRecord.createdAt);
+  const indexedAt = indexResult.indexedAt ? new Date(indexResult.indexedAt) : null;
+  const walletAddressLower = userRecord.walletAddress.toLowerCase();
+  const latestLoginFields = {
     walletAddress: userRecord.walletAddress,
-    walletAddressLower: userRecord.walletAddress.toLowerCase(),
+    walletAddressLower,
     type: toDatabaseLoginType(userRecord.loginType),
     loginType: userRecord.loginType,
-    emailHash: userRecord.emailHash,
     linkedAccounts: userRecord.linkedAccounts,
     storageRoot: storageResult.rootHash,
     storageTransactionHash: storageResult.txHash,
     indexTransactionHash: indexResult.transactionHash,
     indexBlockNumber: indexResult.blockNumber,
     indexBlockTimestamp: indexResult.blockTimestamp,
-    indexedAt: indexResult.indexedAt ? new Date(indexResult.indexedAt) : null,
+    indexedAt,
     indexExplorerUrl: indexResult.explorerUrl,
-    createdAt: new Date(userRecord.createdAt),
-    savedAt: new Date(),
+    lastLoginAt: now,
+    savedAt: now,
+    updatedAt: now,
   };
 
-  let result;
+  if (userRecord.emailHash) {
+    latestLoginFields.emailHash = userRecord.emailHash;
+  }
+
+  const update = {
+    $set: latestLoginFields,
+    $setOnInsert: {
+      privyUserId: userRecord.privyUserId,
+      firstLoginAt: createdAt,
+      createdAt,
+    },
+    $inc: {
+      loginCount: 1,
+    },
+    $addToSet: {
+      knownPrivyUserIds: userRecord.privyUserId,
+      knownWalletAddresses: userRecord.walletAddress,
+      knownWalletAddressesLower: walletAddressLower,
+      knownLoginTypes: userRecord.loginType,
+      linkedAccountTypes: { $each: userRecord.linkedAccounts },
+      ...(userRecord.emailHash ? { knownEmailHashes: userRecord.emailHash } : {}),
+    },
+  };
+
+  const options = {
+    upsert: true,
+    returnDocument: "after",
+    sort: { lastLoginAt: -1, indexedAt: -1, savedAt: -1, createdAt: -1 },
+  };
+  let savedDocument;
 
   try {
-    result = await collection.insertOne(document);
+    savedDocument = await collection.findOneAndUpdate(
+      { $or: getLoginIdentityFilters(userRecord) },
+      update,
+      options,
+    );
   } catch (error) {
-    if (isLegacyPrivyUniqueIndexError(error)) {
-      await dropLegacyPrivyUniqueIndex(collection);
-      result = await collection.insertOne(document);
-
-      return {
-        id: result.insertedId.toString(),
-        collection: env.mongodbCollection,
-      };
-    }
-
     await resetMongoClient();
     const retryClient = await getMongoClient();
     collection = retryClient.db().collection(env.mongodbCollection);
+    savedDocument = await collection.findOneAndUpdate(
+      { $or: getLoginIdentityFilters(userRecord) },
+      update,
+      options,
+    );
+  }
 
-    try {
-      result = await collection.insertOne(document);
-    } catch (retryError) {
-      if (isLegacyPrivyUniqueIndexError(retryError)) {
-        await dropLegacyPrivyUniqueIndex(collection);
-        result = await collection.insertOne(document);
-      } else {
-        throw retryError;
-      }
-    }
+  const document = savedDocument?.value ?? savedDocument;
+
+  if (!document?._id) {
+    throw new Error("MongoDB did not return the saved login document");
   }
 
   return {
-    id: result.insertedId.toString(),
+    id: document._id.toString(),
     collection: env.mongodbCollection,
+    loginCount: document.loginCount ?? 1,
+    lastLoginAt: document.lastLoginAt?.toISOString?.() ?? null,
   };
 }
 
@@ -140,14 +167,16 @@ export async function listUserLoginHistory({ walletAddress, privyUserId, limit =
   const filters = [];
 
   if (walletAddress) {
+    const walletAddressLower = walletAddress.toLowerCase();
     filters.push(
-      { walletAddressLower: walletAddress.toLowerCase() },
+      { walletAddressLower },
+      { knownWalletAddressesLower: walletAddressLower },
       { walletAddress: { $regex: `^${escapeRegExp(walletAddress)}$`, $options: "i" } },
     );
   }
 
   if (privyUserId) {
-    filters.push({ privyUserId });
+    filters.push({ privyUserId }, { knownPrivyUserIds: privyUserId });
   }
 
   if (filters.length === 0) {

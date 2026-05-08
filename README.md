@@ -59,7 +59,14 @@ Saved fields:
 - `type`: MongoDB-friendly login type, saved as `google`, `email`, or `wallet`
 - `emailHash`
 - `linkedAccounts`
+- `loginCount`
+- `firstLoginAt`
+- `lastLoginAt`
 - `createdAt`
+
+MongoDB keeps one profile document per known identity match (email hash, Privy user id, or wallet
+address). Repeat logins update the latest 0G transaction fields, increment `loginCount`, and refresh
+`lastLoginAt`; full login history is read from 0G Chain events.
 
 The API response includes:
 
@@ -67,5 +74,7 @@ The API response includes:
 - `storageTransactionHash`: 0G Storage transaction hash, when returned by the SDK
 - `databaseId`: MongoDB document id
 - `databaseCollection`: MongoDB collection name
+- `databaseLoginCount`: total MongoDB login count for the matched identity
+- `databaseLastLoginAt`: latest MongoDB login time for the matched identity
 - `indexTransactionHash`: 0G Chain transaction hash
 - `indexBlockNumber`: 0G Chain block number
