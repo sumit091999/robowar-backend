@@ -1,6 +1,10 @@
 # Robowar Backend
 
-Express + MongoDB backend for storing authenticated Robowars users.
+Express backend for decentralized Robowars user indexing on 0G.
+
+The backend stores each authenticated user record as JSON on 0G Storage, writes the user's
+wallet address and 0G data root to a 0G Chain smart contract for verifiable indexing, and saves
+a database copy in MongoDB for app/admin lookup.
 
 ## Setup
 
@@ -10,14 +14,28 @@ Express + MongoDB backend for storing authenticated Robowars users.
 npm install
 ```
 
-2. Add your MongoDB connection string in `.env`:
+2. Configure `.env`:
 
 ```env
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/robowar
+PORT=4000
+CLIENT_ORIGIN=http://localhost:5173
+MONGODB_URI=your_mongodb_connection_string
 MONGODB_COLLECTION=RoboWar
+ZERO_G_CHAIN_RPC_URL=https://evmrpc.0g.ai
+ZERO_G_CHAIN_ID=16661
+ZERO_G_STORAGE_INDEXER_RPC=https://indexer-storage-turbo.0g.ai
+ZERO_G_EXPLORER_URL=https://chainscan.0g.ai
+ZERO_G_PRIVATE_KEY=your_backend_indexer_private_key
+ROBOWAR_INDEX_CONTRACT_FILE=contract/RoboWarUserIndex.sol
+ROBOWAR_INDEX_CONTRACT_ADDRESS=your_deployed_robo_war_user_index_contract
+ROBOWAR_INDEX_START_BLOCK=0
 ```
 
-3. Start the backend:
+3. Deploy `contract/RoboWarUserIndex.sol` to 0G Mainnet.
+
+4. Put the deployed address in `ROBOWAR_INDEX_CONTRACT_ADDRESS`.
+
+5. Start the backend:
 
 ```bash
 npm run dev
@@ -34,6 +52,16 @@ Saved fields:
 - `privyUserId`
 - `walletAddress`
 - `loginType`: `google`, `email`, or `connect_wallet`
-- `email`
+- `type`: MongoDB-friendly login type, saved as `google`, `email`, or `wallet`
+- `emailHash`
 - `linkedAccounts`
-- `lastLoginAt`
+- `createdAt`
+
+The API response includes:
+
+- `storageRoot`: 0G Storage data root
+- `storageTransactionHash`: 0G Storage transaction hash, when returned by the SDK
+- `databaseId`: MongoDB document id
+- `databaseCollection`: MongoDB collection name
+- `indexTransactionHash`: 0G Chain transaction hash
+- `indexBlockNumber`: 0G Chain block number

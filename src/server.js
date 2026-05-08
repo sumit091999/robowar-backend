@@ -1,6 +1,5 @@
 import cors from "cors";
 import express from "express";
-import { connectDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { userRoutes } from "./routes/userRoutes.js";
 
@@ -22,16 +21,13 @@ app.use("/api/users", userRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
-  res.status(500).json({ message: "Internal server error" });
+  res.status(500).json({
+    message: "Internal server error",
+    syncStep: err.syncStep ?? null,
+    detail: err.message,
+  });
 });
 
-connectDatabase()
-  .then(() => {
-    app.listen(env.port, () => {
-      console.log(`[server] Robowar backend listening on port ${env.port}`);
-    });
-  })
-  .catch((error) => {
-    console.error("[server] Failed to start", error);
-    process.exit(1);
-  });
+app.listen(env.port, () => {
+  console.log(`[server] Robowar backend listening on port ${env.port}`);
+});
